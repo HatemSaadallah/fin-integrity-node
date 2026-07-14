@@ -1,0 +1,68 @@
+{
+  "name": "@fin-integrity/node",
+  "version": "0.1.0",
+  "description": "Reconciliation-as-you-code — capture Stripe and ledger events from your backend and catch every payment that doesn't reconcile.",
+  "keywords": [
+    "reconciliation",
+    "stripe",
+    "ledger",
+    "fintech",
+    "payments",
+    "finance",
+    "accounting",
+    "observability",
+    "sdk"
+  ],
+  "license": "MIT",
+  "author": "fin-integrity",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HatemSaadallah/fin-integrity-node.git"
+  },
+  "homepage": "https://github.com/HatemSaadallah/fin-integrity-node#readme",
+  "bugs": {
+    "url": "https://github.com/HatemSaadallah/fin-integrity-node/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "stripe": "^17.5.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8"
+  },
+  "peerDependencies": {
+    "stripe": ">=12"
+  },
+  "peerDependenciesMeta": {
+    "stripe": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
