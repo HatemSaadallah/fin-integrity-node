@@ -1,5 +1,7 @@
 export type Side = "processor" | "ledger";
 export type EventType = "payment" | "refund";
+/** Wire-level event types. `payout` is processor-only and lands in its own table. */
+export type WireEventType = EventType | "payout";
 export type Direction = "credit" | "debit";
 
 /** Money as an integer count of the currency's minor units + ISO-4217 code. Never a float. */
@@ -19,12 +21,20 @@ export interface EventEnvelope {
   idempotency_key: string;
   side: Side;
   source: string;
-  event_type: EventType;
+  event_type: WireEventType;
   /** The cross-side join key both sides agree on. */
   reference: string;
   /** This side's native id (e.g. Stripe pi_…/re_…, a ledger row id). */
   external_id: string;
   amount: { minor: string; currency: string; exponent?: number };
+  /** Processor fee (minor units); lets reconciliation match a net-of-fee ledger entry. */
+  fee?: { minor: string; currency: string };
+  /** Correlation id threading the whole transaction journey (frontend → db). */
+  trace_id?: string;
+  /** The payout this transaction settled in (processor side). */
+  payout_id?: string;
+  /** Payout arrival time (payout events only). */
+  arrival_at?: string;
   occurred_at: string;
   captured_at: string;
   status?: string;
@@ -40,9 +50,29 @@ export interface RecordInput {
   reference: string;
   external_id: string;
   amount: Money;
+  /** Processor fee (minor units) — enables net-of-fee reconciliation. */
+  fee?: Money;
+  /** Correlation id for end-to-end tracing. Reuse the one from the frontend SDK. */
+  traceId?: string;
+  /** Link this transaction to the payout it settles in. */
+  payoutId?: string;
   occurred_at?: string | Date;
   status?: string;
   direction?: Direction;
+  metadata?: Record<string, unknown>;
+}
+
+/** Input for recordPayout() — a processor payout (processor → bank). */
+export interface PayoutInput {
+  source?: string;
+  /** The processor's payout id (e.g. Stripe po_…). Used as the reference + external id. */
+  external_id: string;
+  amount: Money;
+  /** When the funds are expected to (or did) arrive in the bank. */
+  arrivalAt?: string | Date;
+  traceId?: string;
+  occurred_at?: string | Date;
+  status?: string;
   metadata?: Record<string, unknown>;
 }
 

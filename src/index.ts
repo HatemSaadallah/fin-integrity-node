@@ -7,10 +7,12 @@ export { FinIntegrityError, ConfigError } from "./errors.js";
 export type {
   FinIntegrityConfig,
   RecordInput,
+  PayoutInput,
   EventEnvelope,
   Money,
   Side,
   EventType,
+  WireEventType,
   Direction,
   Transport,
 } from "./types.js";

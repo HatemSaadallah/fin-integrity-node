@@ -1,7 +1,7 @@
 import { ConfigError, FinIntegrityError } from "./errors.js";
 import { deterministicKey, uuidKey } from "./idempotency.js";
 import { HttpTransport, MemoryTransport } from "./transport.js";
-import type { EventEnvelope, FinIntegrityConfig, RecordInput, Side, Transport } from "./types.js";
+import type { EventEnvelope, FinIntegrityConfig, PayoutInput, RecordInput, Side, Transport } from "./types.js";
 
 const DEFAULT_ENDPOINT = "https://ingest.fin-integrity.com";
 
@@ -24,7 +24,7 @@ export class FinIntegrityClient {
   private timer?: ReturnType<typeof setInterval>;
 
   /** Capture money-movement observed from a payment processor (Stripe, Adyen, bank, …). */
-  readonly processor: { record: (input: RecordInput) => void };
+  readonly processor: { record: (input: RecordInput) => void; recordPayout: (input: PayoutInput) => void };
   /** Capture entries from your own internal ledger / books. */
   readonly ledger: { record: (input: RecordInput) => void };
 
@@ -61,7 +61,10 @@ export class FinIntegrityClient {
       });
     }
 
-    this.processor = { record: (input) => this.record("processor", input) };
+    this.processor = {
+      record: (input) => this.record("processor", input),
+      recordPayout: (input) => this.recordPayout(input),
+    };
     this.ledger = { record: (input) => this.record("ledger", input) };
 
     this.timer = setInterval(() => void this.flush(), this.flushMs);
@@ -93,6 +96,11 @@ export class FinIntegrityClient {
           currency: input.amount.currency.toLowerCase(),
           ...(input.amount.exponent != null ? { exponent: input.amount.exponent } : {}),
         },
+        ...(input.fee != null
+          ? { fee: { minor: toMinorString(input.fee.minor), currency: input.fee.currency.toLowerCase() } }
+          : {}),
+        ...(input.traceId != null ? { trace_id: input.traceId } : {}),
+        ...(input.payoutId != null ? { payout_id: input.payoutId } : {}),
         occurred_at: toIso(input.occurred_at),
         captured_at: new Date().toISOString(),
         ...(input.status != null ? { status: input.status } : {}),
@@ -103,6 +111,38 @@ export class FinIntegrityClient {
       this.enqueue(env);
     } catch (err) {
       this.onError(err); // fail-open — never throw into the caller
+    }
+  }
+
+  /** Capture a processor payout (processor → bank). Stored separately; links to
+   *  transactions via their payoutId. */
+  private recordPayout(input: PayoutInput): void {
+    try {
+      const env: EventEnvelope = {
+        schema_version: "1.0",
+        event_id: uuidKey(),
+        idempotency_key: "",
+        side: "processor",
+        source: input.source ?? "custom",
+        event_type: "payout",
+        reference: input.external_id,
+        external_id: input.external_id,
+        amount: {
+          minor: toMinorString(input.amount.minor),
+          currency: input.amount.currency.toLowerCase(),
+          ...(input.amount.exponent != null ? { exponent: input.amount.exponent } : {}),
+        },
+        ...(input.traceId != null ? { trace_id: input.traceId } : {}),
+        ...(input.arrivalAt != null ? { arrival_at: toIso(input.arrivalAt) } : {}),
+        occurred_at: toIso(input.occurred_at),
+        captured_at: new Date().toISOString(),
+        ...(input.status != null ? { status: input.status } : {}),
+        ...(input.metadata != null ? { metadata: input.metadata } : {}),
+      };
+      env.idempotency_key = this.idempotencyMode === "uuid" ? uuidKey() : deterministicKey(env);
+      this.enqueue(env);
+    } catch (err) {
+      this.onError(err); // fail-open
     }
   }
 
