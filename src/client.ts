@@ -75,9 +75,29 @@ export class FinIntegrityClient {
     this.timer = setInterval(() => void this.flush(), this.flushMs);
     if (typeof this.timer.unref === "function") this.timer.unref();
 
-    const drain = () => void this.flush();
-    process.once("beforeExit", drain);
-    process.once("SIGTERM", drain);
+    process.once("beforeExit", () => void this.flush());
+    process.once("SIGTERM", () => this.onSigterm());
+  }
+
+  /**
+   * Drain on SIGTERM, then hand the process back its normal fate.
+   *
+   * Node disables its default terminate-on-SIGTERM as soon as ANY listener is
+   * registered, so simply attaching one made this library silently decide that
+   * SIGTERM no longer kills the host process — a bare script would ignore
+   * `docker stop` and hang until SIGKILL, which is also when the queued events
+   * we were trying to protect get dropped anyway.
+   *
+   * So: flush, then exit ourselves — but only if nothing else is listening. If
+   * the app registered its own handler it owns the shutdown sequence, and a
+   * library must not exit out from under it. `once` has already removed our own
+   * listener by the time this runs, so any remaining count is the app's.
+   */
+  private onSigterm(): void {
+    const appHandlesIt = process.listenerCount("SIGTERM") > 0;
+    void this.flush().finally(() => {
+      if (!appHandlesIt) process.exit(143); // 128 + SIGTERM(15), the conventional code
+    });
   }
 
   /** Low-level escape hatch: capture a fully-specified event (both adapters use this). */

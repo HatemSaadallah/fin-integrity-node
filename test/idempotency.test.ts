@@ -108,3 +108,37 @@ describe("HttpTransport", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("SIGTERM handling", () => {
+  // Node disables its default terminate-on-SIGTERM the moment any listener
+  // exists, so a library that attaches one silently makes SIGTERM non-fatal for
+  // its host — a bare script would ignore `docker stop` and hang until SIGKILL.
+  it("exits the process itself when nothing else listens for SIGTERM", async () => {
+    const t = new Capture();
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const fi = new FinIntegrityClient({ transport: t, batch: { maxSize: 99 } });
+    fi.processor.record({ type: "payment", source: "s", reference: "r", external_id: "e", amount: { minor: 1, currency: "usd" } });
+    process.emit("SIGTERM");
+    await new Promise((r) => setImmediate(r));
+    expect(t.sent).toHaveLength(1);        // drained before dying
+    expect(exit).toHaveBeenCalledWith(143); // 128 + SIGTERM
+    exit.mockRestore();
+    await fi.shutdown();
+  });
+
+  it("leaves the exit to the app when the app has its own SIGTERM handler", async () => {
+    const t = new Capture();
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const appHandler = vi.fn();
+    process.on("SIGTERM", appHandler);
+    const fi = new FinIntegrityClient({ transport: t, batch: { maxSize: 99 } });
+    fi.processor.record({ type: "payment", source: "s", reference: "r", external_id: "e2", amount: { minor: 1, currency: "usd" } });
+    process.emit("SIGTERM");
+    await new Promise((r) => setImmediate(r));
+    expect(t.sent).toHaveLength(1);   // still drains
+    expect(exit).not.toHaveBeenCalled(); // but does not exit out from under the app
+    process.off("SIGTERM", appHandler);
+    exit.mockRestore();
+    await fi.shutdown();
+  });
+});
