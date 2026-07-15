@@ -4,6 +4,9 @@ import type { FinIntegrityConfig } from "./types.js";
 export { FinIntegrityClient } from "./client.js";
 export { instrumentStripe } from "./stripe.js";
 export { FinIntegrityError, ConfigError } from "./errors.js";
+// Reaches onError whenever a 2xx carries per-event rejections — callers can't
+// branch on an error they have no way to import. Python exports it; parity.
+export { RejectedEventsError, type RejectedEvent } from "./transport.js";
 export type {
   FinIntegrityConfig,
   RecordInput,
