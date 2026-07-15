@@ -1,7 +1,7 @@
 import { ConfigError, FinIntegrityError } from "./errors.js";
 import { deterministicKey, uuidKey } from "./idempotency.js";
 import { HttpTransport, MemoryTransport } from "./transport.js";
-import type { EventEnvelope, FinIntegrityConfig, PayoutInput, RecordInput, Side, Transport } from "./types.js";
+import type { EventEnvelope, FinIntegrityConfig, PayoutInput, RecordInput, Side, SubscriptionInput, Transport } from "./types.js";
 
 const DEFAULT_ENDPOINT = "https://ingest.fin-integrity.com";
 
@@ -24,7 +24,11 @@ export class FinIntegrityClient {
   private timer?: ReturnType<typeof setInterval>;
 
   /** Capture money-movement observed from a payment processor (Stripe, Adyen, bank, …). */
-  readonly processor: { record: (input: RecordInput) => void; recordPayout: (input: PayoutInput) => void };
+  readonly processor: {
+    record: (input: RecordInput) => void;
+    recordPayout: (input: PayoutInput) => void;
+    recordSubscription: (input: SubscriptionInput) => void;
+  };
   /** Capture entries from your own internal ledger / books. */
   readonly ledger: { record: (input: RecordInput) => void };
 
@@ -64,6 +68,7 @@ export class FinIntegrityClient {
     this.processor = {
       record: (input) => this.record("processor", input),
       recordPayout: (input) => this.recordPayout(input),
+      recordSubscription: (input) => this.recordSubscription(input),
     };
     this.ledger = { record: (input) => this.record("ledger", input) };
 
@@ -101,6 +106,8 @@ export class FinIntegrityClient {
           : {}),
         ...(input.traceId != null ? { trace_id: input.traceId } : {}),
         ...(input.payoutId != null ? { payout_id: input.payoutId } : {}),
+        ...(input.subscriptionId != null ? { subscription_id: input.subscriptionId } : {}),
+        ...(input.parentExternalId != null ? { parent_external_id: input.parentExternalId } : {}),
         occurred_at: toIso(input.occurred_at),
         captured_at: new Date().toISOString(),
         ...(input.status != null ? { status: input.status } : {}),
@@ -111,6 +118,46 @@ export class FinIntegrityClient {
       this.enqueue(env);
     } catch (err) {
       this.onError(err); // fail-open — never throw into the caller
+    }
+  }
+
+  /**
+   * Capture a recurring billing container. Not money movement — this is what a
+   * charge is expected to arrive in, which is what lets reconciliation catch a
+   * billing period that produced no charge at all.
+   *
+   * Send it whenever the subscription changes (created, renewed, status change)
+   * so `currentPeriodEnd` stays current.
+   */
+  private recordSubscription(input: SubscriptionInput): void {
+    try {
+      const env: EventEnvelope = {
+        schema_version: "1.0",
+        event_id: uuidKey(),
+        idempotency_key: "",
+        side: "processor",
+        source: input.source ?? "custom",
+        event_type: "subscription",
+        reference: input.external_id,
+        external_id: input.external_id,
+        amount: {
+          minor: toMinorString(input.amount.minor),
+          currency: input.amount.currency.toLowerCase(),
+          ...(input.amount.exponent != null ? { exponent: input.amount.exponent } : {}),
+        },
+        status: input.status,
+        ...(input.interval != null ? { interval: input.interval } : {}),
+        ...(input.currentPeriodStart != null ? { current_period_start: toIso(input.currentPeriodStart) } : {}),
+        ...(input.currentPeriodEnd != null ? { current_period_end: toIso(input.currentPeriodEnd) } : {}),
+        ...(input.traceId != null ? { trace_id: input.traceId } : {}),
+        occurred_at: toIso(input.occurred_at),
+        captured_at: new Date().toISOString(),
+        ...(input.metadata != null ? { metadata: input.metadata } : {}),
+      };
+      env.idempotency_key = this.idempotencyMode === "uuid" ? uuidKey() : deterministicKey(env);
+      this.enqueue(env);
+    } catch (err) {
+      this.onError(err); // fail-open
     }
   }
 

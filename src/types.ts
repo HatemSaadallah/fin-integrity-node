@@ -1,7 +1,10 @@
 export type Side = "processor" | "ledger";
-export type EventType = "payment" | "refund";
-/** Wire-level event types. `payout` is processor-only and lands in its own table. */
-export type WireEventType = EventType | "payout";
+/** Money movement. A dispute is money leaving against a charge — same shape as a
+ *  refund, so it reconciles through the same path. */
+export type EventType = "payment" | "refund" | "dispute";
+/** Wire-level event types. `payout` and `subscription` are processor-only and
+ *  land in their own tables. */
+export type WireEventType = EventType | "payout" | "subscription";
 export type Direction = "credit" | "debit";
 
 /** Money as an integer count of the currency's minor units + ISO-4217 code. Never a float. */
@@ -33,8 +36,16 @@ export interface EventEnvelope {
   trace_id?: string;
   /** The payout this transaction settled in (processor side). */
   payout_id?: string;
+  /** The subscription a charge belongs to (processor side). */
+  subscription_id?: string;
+  /** The charge a refund/dispute acts on. */
+  parent_external_id?: string;
   /** Payout arrival time (payout events only). */
   arrival_at?: string;
+  /** Subscription fields (subscription events only). */
+  interval?: string;
+  current_period_start?: string;
+  current_period_end?: string;
   occurred_at: string;
   captured_at: string;
   status?: string;
@@ -56,9 +67,34 @@ export interface RecordInput {
   traceId?: string;
   /** Link this transaction to the payout it settles in. */
   payoutId?: string;
+  /** The subscription this charge belongs to (sub_…). Lets reconciliation spot a
+   *  billing period that never produced a charge. */
+  subscriptionId?: string;
+  /** The charge a refund or dispute acts on. */
+  parentExternalId?: string;
   occurred_at?: string | Date;
+  /** For disputes: needs_response | under_review | won | lost. Only `lost` is
+   *  settled money-out. */
   status?: string;
   direction?: Direction;
+  metadata?: Record<string, unknown>;
+}
+
+/** Input for recordSubscription() — a recurring billing container, not money. */
+export interface SubscriptionInput {
+  source?: string;
+  /** The processor's subscription id (e.g. Stripe sub_…). */
+  external_id: string;
+  status: "active" | "past_due" | "canceled" | "paused" | "trialing";
+  /** Amount billed each period. */
+  amount: Money;
+  interval?: "day" | "week" | "month" | "year";
+  currentPeriodStart?: string | Date;
+  /** When the next charge is expected by. Reconciliation flags a live
+   *  subscription whose period ended with no charge. */
+  currentPeriodEnd?: string | Date;
+  traceId?: string;
+  occurred_at?: string | Date;
   metadata?: Record<string, unknown>;
 }
 

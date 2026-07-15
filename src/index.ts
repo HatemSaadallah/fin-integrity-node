@@ -8,6 +8,7 @@ export type {
   FinIntegrityConfig,
   RecordInput,
   PayoutInput,
+  SubscriptionInput,
   EventEnvelope,
   Money,
   Side,
