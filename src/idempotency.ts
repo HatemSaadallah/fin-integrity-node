@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { EventEnvelope } from "./types.js";
 
 type KeyBasis = Pick<EventEnvelope, "source" | "side" | "external_id" | "event_type"> &
-  Partial<Pick<EventEnvelope, "status" | "current_period_end" | "arrival_at">> & {
+  Partial<Pick<EventEnvelope, "status" | "current_period_end" | "arrival_at" | "environment">> & {
     amount?: { minor: string };
   };
 
@@ -26,6 +26,9 @@ export function deterministicKey(e: KeyBasis): string {
     e.side,
     e.external_id,
     e.event_type,
+    // Environment is part of identity: the same external_id in staging vs
+    // production are distinct facts that must not collapse to one row.
+    e.environment ?? "",
     // Mutable state. Absent fields collapse to "" so unused ones cost nothing.
     e.status ?? "",
     e.amount?.minor ?? "",

@@ -1,3 +1,4 @@
+import { cleanEnvironment } from "./environment.js";
 import { ConfigError, FinIntegrityError } from "./errors.js";
 import { deterministicKey, uuidKey } from "./idempotency.js";
 import { HttpTransport, MemoryTransport } from "./transport.js";
@@ -13,6 +14,7 @@ export class FinIntegrityClient {
   private readonly flushMs: number;
   private readonly maxQueueSize: number;
   private readonly sampleRate: number;
+  private readonly environment?: string;
   private readonly beforeSend?: FinIntegrityConfig["beforeSend"];
   private readonly debug: boolean;
   private readonly onError: (err: unknown) => void;
@@ -47,6 +49,7 @@ export class FinIntegrityClient {
     this.flushMs = config.batch?.flushMs ?? 2000;
     this.maxQueueSize = config.maxQueueSize ?? 1000;
     this.sampleRate = config.sampleRate ?? 1.0;
+    this.environment = cleanEnvironment(config.environment ?? process.env.NODE_ENV);
     this.beforeSend = config.beforeSend;
     this.debug = config.debug ?? false;
     this.onError = config.onError ?? ((e) => { if (this.debug) console.warn("[fin-integrity]", e); });
@@ -132,6 +135,7 @@ export class FinIntegrityClient {
         captured_at: new Date().toISOString(),
         ...(input.status != null ? { status: input.status } : {}),
         ...(input.direction != null ? { direction: input.direction } : {}),
+        ...this.envFields(input.environment),
         ...(input.metadata != null ? { metadata: input.metadata } : {}),
       };
       env.idempotency_key = this.idempotencyMode === "uuid" ? uuidKey() : deterministicKey(env);
@@ -172,6 +176,7 @@ export class FinIntegrityClient {
         ...(input.traceId != null ? { trace_id: input.traceId } : {}),
         occurred_at: toIso(input.occurred_at),
         captured_at: new Date().toISOString(),
+        ...this.envFields(input.environment),
         ...(input.metadata != null ? { metadata: input.metadata } : {}),
       };
       env.idempotency_key = this.idempotencyMode === "uuid" ? uuidKey() : deterministicKey(env);
@@ -204,6 +209,7 @@ export class FinIntegrityClient {
         occurred_at: toIso(input.occurred_at),
         captured_at: new Date().toISOString(),
         ...(input.status != null ? { status: input.status } : {}),
+        ...this.envFields(input.environment),
         ...(input.metadata != null ? { metadata: input.metadata } : {}),
       };
       env.idempotency_key = this.idempotencyMode === "uuid" ? uuidKey() : deterministicKey(env);
@@ -211,6 +217,13 @@ export class FinIntegrityClient {
     } catch (err) {
       this.onError(err); // fail-open
     }
+  }
+
+  /** Per-event override wins over the client default; an invalid value falls back
+   *  to the default (and, if that's absent too, the server defaults to production). */
+  private envFields(perEvent?: string): { environment?: string } {
+    const environment = cleanEnvironment(perEvent) ?? this.environment;
+    return environment != null ? { environment } : {};
   }
 
   private enqueue(env: EventEnvelope): void {

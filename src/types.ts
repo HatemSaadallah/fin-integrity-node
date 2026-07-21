@@ -50,6 +50,9 @@ export interface EventEnvelope {
   captured_at: string;
   status?: string;
   direction?: Direction;
+  /** Free-form environment tag (Sentry-style). Reconciliation segments by it, so
+   *  events tagged `staging` never match a `production` ledger. */
+  environment?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -77,6 +80,8 @@ export interface RecordInput {
    *  settled money-out. */
   status?: string;
   direction?: Direction;
+  /** Override the client's default environment for this one event. */
+  environment?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -95,6 +100,8 @@ export interface SubscriptionInput {
   currentPeriodEnd?: string | Date;
   traceId?: string;
   occurred_at?: string | Date;
+  /** Override the client's default environment for this one event. */
+  environment?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -109,6 +116,8 @@ export interface PayoutInput {
   traceId?: string;
   occurred_at?: string | Date;
   status?: string;
+  /** Override the client's default environment for this one event. */
+  environment?: string;
   metadata?: Record<string, unknown>;
 }
 
