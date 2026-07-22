@@ -258,6 +258,32 @@ export class FinIntegrityClient {
     await this.flush();
   }
 
+  /** Record a deploy marker so reconciliation can attribute a discrepancy spike
+   *  to the release that caused it. Infrequent; sent directly (not batched).
+   *  Fail-open — never throws into your deploy pipeline. */
+  async recordDeploy(
+    release: string,
+    opts: { environment?: string; deployedAt?: string | Date } = {},
+  ): Promise<void> {
+    try {
+      const clean = cleanReleaseLabel(release);
+      if (!clean) return;
+      const body: Record<string, unknown> = { release: clean, source: "sdk" };
+      if (opts.environment != null) body.environment = opts.environment;
+      if (opts.deployedAt != null) {
+        body.deployed_at = opts.deployedAt instanceof Date ? opts.deployedAt.toISOString() : String(opts.deployedAt);
+      }
+      const res = await fetch(this.endpoint.replace(/\/+$/, "") + "/v1/deploys", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${this.apiKey}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`fin-integrity: recordDeploy got ${res.status}`);
+    } catch (err) {
+      this.onError(err);  // fail-open
+    }
+  }
+
   /** Envelopes captured so far (dryRun / MemoryTransport only). Great for tests. */
   inspect(): EventEnvelope[] {
     return this.memory ? [...this.memory.sent, ...this.queue] : [...this.queue];
@@ -274,4 +300,10 @@ function toMinorString(m: number | bigint): string {
 function toIso(v?: string | Date): string {
   if (!v) return new Date().toISOString();
   return v instanceof Date ? v.toISOString() : v;
+}
+function cleanReleaseLabel(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const v = raw.trim();
+  if (!v || v.length > 200 || /[\n\t]/.test(v)) return undefined;
+  return v;
 }
