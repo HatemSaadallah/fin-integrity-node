@@ -1,6 +1,6 @@
 {
   "name": "@fin-integrity/node",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reconciliation-as-you-code — capture Stripe and ledger events from your backend and catch every payment that doesn't reconcile.",
   "keywords": [
     "reconciliation",
